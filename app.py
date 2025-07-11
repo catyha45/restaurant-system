@@ -595,6 +595,56 @@ def toggle_menu_item(item_id):
             return jsonify({'success': False, 'message': str(e)}), 500
 
 
+# 在 app.py 中，找到 @app.route('/api/menu') 後面，新增這個 API：
+
+@app.route('/api/admin/simple-stats')
+@admin_required
+def simple_stats():
+    """簡單的統計資料 API（用於通用檢查）"""
+    try:
+        # 使用與 dashboard 相同的邏輯
+        now = datetime.now()
+        today_start = datetime(now.year, now.month, now.day, 0, 0, 0)
+        today_end = today_start + timedelta(days=1)
+
+        # 查詢今日訂單
+        today_orders = Order.query.filter(
+            Order.created_at >= today_start,
+            Order.created_at < today_end
+        ).all()
+
+        # 計算統計
+        completed_orders = [order for order in today_orders if order.order_status == 'completed']
+        pending_orders = [order for order in today_orders if order.order_status == 'pending']
+        completed_revenue = sum(order.total_amount for order in completed_orders)
+
+        # 取得最新訂單 ID
+        latest_order = Order.query.order_by(Order.id.desc()).first()
+        latest_order_id = latest_order.id if latest_order else 0
+
+        return jsonify({
+            'success': True,
+            'today_orders': len(today_orders),
+            'today_revenue': completed_revenue,
+            'pending_orders': len(pending_orders),
+            'completed_orders': len(completed_orders),
+            'latest_order_id': latest_order_id,
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        print(f"[ERROR] 簡單統計查詢失敗: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'today_orders': 0,
+            'today_revenue': 0,
+            'pending_orders': 0,
+            'completed_orders': 0,
+            'latest_order_id': 0
+        }), 500
+
+
 # ========================
 # 除錯路由（需要管理員權限）
 # ========================

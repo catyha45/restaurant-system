@@ -397,222 +397,261 @@
 
 {% block extra_js %}
 <script>
-    // 輪詢通知系統
-    let pollingInterval = null;
-    let isPolling = false;
+// 簡單通用的通知系統
+let lastOrderCount = {{ stats.today_orders }};
+let lastRevenue = {{ stats.today_revenue }};
+let lastOrderId = 0;
 
-    // 音效相關
-// 超簡單版本：更大聲的提示音
-    function createNotificationSound() {
-        try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-            // 創建更響亮的三重提示音
-            const times = [0, 0.3, 0.6]; // 三個音的時間點
-            const frequencies = [1000, 800, 1200]; // 不同頻率
-
-            times.forEach((time, index) => {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-
-                // 設置音效參數
-                oscillator.frequency.setValueAtTime(frequencies[index], audioContext.currentTime + time);
-                oscillator.type = 'sine';
-
-                // 更大的音量！
-                gainNode.gain.setValueAtTime(0, audioContext.currentTime + time);
-                gainNode.gain.linearRampToValueAtTime(0.9, audioContext.currentTime + time + 0.01); // 從0.3改為0.9
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + time + 0.25);
-
-                oscillator.start(audioContext.currentTime + time);
-                oscillator.stop(audioContext.currentTime + time + 0.25);
-            });
-
-            console.log('[SOUND] 播放大聲提示音');
-
-        } catch (error) {
-            console.log('音效播放失敗:', error);
-
-            // 備用方案：嘗試使用系統音效
-            try {
-                // 播放系統提示音（如果支援）
-                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmsbBjyJ0/LNdCUELIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSsFJHfH8N2QQAoUXrTp66hVFApGn+DyvmsbBjyJ0/LNdCUELIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSsFJHfH8N2QQAoUXrTp66hVFApGn+DyvmsbBjyJ0/LNdCUELIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSsFJHfH8N2QQAoUXrTp66hVFApGn+DyvmsbBjyJ0/LNdCUE');
-                audio.volume = 1.0; // 最大音量
-                audio.play().catch(() => {
-                    console.log('系統音效也無法播放');
-                });
-            } catch (e) {
-                console.log('備用音效也失敗');
-            }
-        }
-    }
-
-    // 開始輪詢
-    function startPolling() {
-        if (isPolling) return;
-
-        isPolling = true;
-        updateConnectionStatus('connected', '即時通知已啟用');
-
-        console.log('[POLLING] 開始輪詢檢查更新...');
-
-        pollingInterval = setInterval(async () => {
-            try {
-                const response = await fetch('/api/admin/check-updates');
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                const result = await response.json();
-
-                if (result.has_updates && result.notifications.length > 0) {
-                    console.log('[POLLING] 收到更新:', result.notifications);
-
-                    result.notifications.forEach(notification => {
-                        handleNotification(notification);
-                    });
-                }
-
+// 初始化最後訂單 ID
+function initializeLastOrderId() {
+    fetch('/api/admin/simple-stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                lastOrderId = data.latest_order_id;
+                console.log('[INIT] 初始訂單 ID:', lastOrderId);
                 updateConnectionStatus('connected', '即時通知已啟用');
-
-            } catch (error) {
-                console.error('[POLLING] 輪詢錯誤:', error);
-                updateConnectionStatus('disconnected', '連接異常');
             }
-        }, 3000); // 每3秒檢查一次
-    }
+        })
+        .catch(error => {
+            console.log('[INIT] 初始化失敗，但繼續運作:', error);
+            updateConnectionStatus('disconnected', '連接異常');
+        });
+}
 
-    // 停止輪詢
-    function stopPolling() {
-        if (!isPolling) return;
+function checkAndRefresh() {
+    fetch('/api/admin/simple-stats')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) return;
 
-        isPolling = false;
+            // 檢查是否有新訂單
+            const hasNewOrder = data.latest_order_id > lastOrderId;
+            const hasStatsChange = data.today_orders !== lastOrderCount || data.today_revenue !== lastRevenue;
 
-        if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
-        }
+            if (hasNewOrder || hasStatsChange) {
+                console.log('[UPDATE] 偵測到變化:', {
+                    newOrderId: data.latest_order_id,
+                    lastOrderId: lastOrderId,
+                    newOrderCount: data.today_orders,
+                    lastOrderCount: lastOrderCount
+                });
 
-        updateConnectionStatus('disconnected', '通知已暫停');
-        console.log('[POLLING] 輪詢已停止');
-    }
+                // 更新本地變數
+                const newOrdersCount = data.latest_order_id - lastOrderId;
+                lastOrderId = data.latest_order_id;
+                lastOrderCount = data.today_orders;
+                lastRevenue = data.today_revenue;
 
-    // 更新連接狀態
-    function updateConnectionStatus(status, text) {
-        const statusElement = document.getElementById('notification-status');
-        const statusText = document.getElementById('status-text');
+                // 顯示通知
+                if (hasNewOrder) {
+                    showSimpleNotification(`🍜 新訂單！總計今日 ${data.today_orders} 單`);
+                    createNotificationSound();
 
-        if (statusElement && statusText) {
-            statusElement.className = `notification-status ${status === 'connected' ? '' : 'disconnected'}`;
-            statusText.textContent = text;
-        }
-    }
-
-    // 處理通知
-    function handleNotification(notification) {
-        console.log('[NOTIFICATION] 處理通知:', notification);
-
-        switch (notification.type) {
-            case 'new_order':
-                handleNewOrder(notification.data);
-                break;
-            case 'order_status_updated':
-                handleOrderStatusUpdate(notification.data);
-                break;
-            default:
-                console.log('[NOTIFICATION] 未知通知類型:', notification.type);
-        }
-    }
-
-    // 處理新訂單通知
-    function handleNewOrder(orderData) {
-        console.log('[NEW ORDER] 新訂單:', orderData);
-
-        // 播放提示音
-        createNotificationSound();
-
-        // 顯示桌面通知
-        if (Notification.permission === 'granted') {
-            new Notification('🍽️ 滷味攤新訂單', {
-                body: `訂單 #${orderData.order_id}\n客戶: ${orderData.customer_name}\n金額: NT$ ${orderData.total_amount}`,
-                tag: 'new-order',
-                requireInteraction: true
-            });
-        }
-
-        // 顯示頁面通知
-        showNotification(`新訂單 #${orderData.order_id} - ${orderData.customer_name} - NT$ ${orderData.total_amount}`, 'success');
-
-        // 重新載入頁面以顯示新訂單
-        setTimeout(() => {
-            location.reload();
-        }, 2000);
-    }
-
-    // 處理訂單狀態更新
-    function handleOrderStatusUpdate(orderData) {
-        console.log('[ORDER UPDATE] 訂單狀態更新:', orderData);
-        showNotification(`訂單 #${orderData.order_id} 狀態已更新`, 'info');
-    }
-
-    // 請求桌面通知權限
-    function requestNotificationPermission() {
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission().then(function(permission) {
-                if (permission === 'granted') {
-                    console.log('[NOTIFICATION] 桌面通知權限已授予');
-                } else {
-                    console.log('[NOTIFICATION] 桌面通知權限被拒絕');
+                    // 桌面通知
+                    if (Notification.permission === 'granted') {
+                        new Notification('🍽️ 滷味攤新訂單', {
+                            body: `收到新訂單！今日總計 ${data.today_orders} 單`,
+                            tag: 'new-order',
+                            requireInteraction: true
+                        });
+                    }
                 }
-            });
-        }
+
+                // 2秒後重新整理頁面
+                setTimeout(() => {
+                    console.log('[REFRESH] 重新整理頁面');
+                    location.reload();
+                }, 2000);
+            }
+
+            updateConnectionStatus('connected', '即時通知已啟用');
+        })
+        .catch(error => {
+            console.log('[CHECK] 檢查失敗，但繼續運作:', error);
+            updateConnectionStatus('disconnected', '連接異常');
+        });
+}
+
+function showSimpleNotification(message) {
+    // 移除現有通知
+    const existingNotification = document.querySelector('.simple-notification');
+    if (existingNotification) {
+        existingNotification.remove();
     }
 
-    // 測試通知功能
-    function testNotification() {
-        createNotificationSound();
-        showNotification('測試通知 - 新訂單提醒', 'success');
+    // 建立新通知
+    const notification = document.createElement('div');
+    notification.className = 'simple-notification';
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #28a745;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        z-index: 9999;
+        font-weight: bold;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease-out;
+    `;
+    notification.textContent = message;
 
-        if (Notification.permission === 'granted') {
-            new Notification('🍽️ 滷味攤測試通知', {
-                body: '這是一個測試通知',
-                tag: 'test-notification'
-            });
+    // 加入動畫效果
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
+    `;
+    document.head.appendChild(style);
+
+    document.body.appendChild(notification);
+
+    // 5秒後移除
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// 提示音函數
+function createNotificationSound() {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const times = [0, 0.3, 0.6];
+        const frequencies = [1000, 800, 1200];
+
+        times.forEach((time, index) => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.setValueAtTime(frequencies[index], audioContext.currentTime + time);
+            oscillator.type = 'sine';
+
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime + time);
+            gainNode.gain.linearRampToValueAtTime(0.9, audioContext.currentTime + time + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + time + 0.25);
+
+            oscillator.start(audioContext.currentTime + time);
+            oscillator.stop(audioContext.currentTime + time + 0.25);
+        });
+
+        console.log('[SOUND] 播放提示音');
+    } catch (error) {
+        console.log('音效播放失敗:', error);
     }
+}
 
-    // 頁面載入完成後初始化
-    document.addEventListener('DOMContentLoaded', function() {
-        console.log('[POLLING] 初始化輪詢通知系統');
+// 更新連接狀態
+function updateConnectionStatus(status, text) {
+    const statusElement = document.getElementById('notification-status');
+    const statusText = document.getElementById('status-text');
 
-        // 請求通知權限
-        requestNotificationPermission();
+    if (statusElement && statusText) {
+        statusElement.className = `notification-status ${status === 'connected' ? '' : 'disconnected'}`;
+        statusText.textContent = text;
+    }
+}
 
-        // 開始輪詢
-        startPolling();
-
-        // 頁面隱藏時停止輪詢，顯示時重新開始
-        document.addEventListener('visibilitychange', function() {
-            if (document.hidden) {
-                console.log('[POLLING] 頁面隱藏，暫停輪詢');
-                stopPolling();
+// 請求桌面通知權限
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(function(permission) {
+            if (permission === 'granted') {
+                console.log('[NOTIFICATION] 桌面通知權限已授予');
             } else {
-                console.log('[POLLING] 頁面顯示，重新開始輪詢');
-                startPolling();
+                console.log('[NOTIFICATION] 桌面通知權限被拒絕');
             }
         });
-    });
+    }
+}
 
-    // 頁面卸載時清理
-    window.addEventListener('beforeunload', function() {
-        stopPolling();
+// 狀態更新按鈕的處理
+function updateStatus(orderId, status) {
+    fetch(`/api/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: status })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSimpleNotification(`✅ 訂單 #${orderId} 狀態已更新`);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('更新失敗: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('更新失敗:', error);
+        alert('更新失敗，請重試');
     });
+}
 
-    // 暴露測試函數到全域
-    window.testNotification = testNotification;
+// 濾器功能（保留原有功能）
+function filterOrders(status) {
+    const orderCards = document.querySelectorAll('.order-card');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+
+    // 更新按鈕狀態
+    filterBtns.forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+
+    // 顯示/隱藏訂單
+    orderCards.forEach(card => {
+        if (status === 'all' || card.dataset.status === status) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+// 測試通知功能
+function testNotification() {
+    createNotificationSound();
+    showSimpleNotification('測試通知 - 新訂單提醒');
+
+    if (Notification.permission === 'granted') {
+        new Notification('🍽️ 滷味攤測試通知', {
+            body: '這是一個測試通知',
+            tag: 'test-notification'
+        });
+    }
+}
+
+// 頁面載入時初始化
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[START] 啟動簡單通知系統');
+
+    // 請求通知權限
+    requestNotificationPermission();
+
+    // 初始化
+    initializeLastOrderId();
+
+    // 每10秒檢查一次（降低頻率，提高穩定性）
+    setInterval(checkAndRefresh, 10000);
+});
+
+// 頁面獲得焦點時檢查
+window.addEventListener('focus', function() {
+    console.log('[FOCUS] 頁面獲得焦點，檢查更新');
+    checkAndRefresh();
+});
+
+// 暴露測試函數到全域
+window.testNotification = testNotification;
+window.updateStatus = updateStatus;
+window.filterOrders = filterOrders;
 </script>
 {% endblock %}

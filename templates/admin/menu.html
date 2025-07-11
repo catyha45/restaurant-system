@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+
+{% block title %}菜單管理 - 滷味攤後台{% endblock %}
+
+{% block extra_css %}
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #f5f7fa;
+    }
+    
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .header h1 {
+        margin: 0 0 10px 0;
+        font-size: 28px;
+        font-weight: 600;
+    }
+    
+    .header p {
+        margin: 0 0 20px 0;
+        opacity: 0.9;
+        font-size: 16px;
+    }
+    
+    .nav-links {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+    
+    .btn {
+        display: inline-block;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+    }
+    
+    .btn-primary {
+        background: rgba(255,255,255,0.2);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.3);
+    }
+    
+    .btn-primary:hover {
+        background: rgba(255,255,255,0.3);
+        transform: translateY(-2px);
+    }
+    
+    .btn-secondary {
+        background: rgba(0,0,0,0.1);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .btn-secondary:hover {
+        background: rgba(0,0,0,0.2);
+        transform: translateY(-2px);
+    }
+    
+    .menu-container {
+        background: white;
+        border-radius: 15px;
+        padding: 0;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+    
+    .menu-header {
+        background: #f8f9fa;
+        padding: 25px 30px;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .menu-title {
+        font-size: 22px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin: 0;
+    }
+    
+    .menu-subtitle {
+        color: #6c757d;
+        margin: 5px 0 0 0;
+        font-size: 14px;
+    }
+    
+    .category-section {
+        border-bottom: 1px solid #f1f3f4;
+    }
+    
+    .category-section:last-child {
+        border-bottom: none;
+    }
+    
+    .category-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 20px 30px;
+        border-bottom: 1px solid #dee2e6;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .category-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #495057;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .category-icon {
+        width: 24px;
+        height: 24px;
+        background: #667eea;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .menu-items-grid {
+        padding: 30px;
+        display: grid;
+        gap: 20px;
+    }
+    
+    .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 20px;
+        border: 2px solid #f1f3f4;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        background: #fafbfc;
+    }
+    
+    .menu-item:hover {
+        border-color: #667eea;
+        background: white;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.1);
+    }
+    
+    .menu-item.unavailable {
+        opacity: 0.6;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+    }
+    
+    .menu-item.unavailable .item-name {
+        text-decoration: line-through;
+        color: #6c757d;
+    }
+    
+    .item-info {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .item-name {
+        font-size: 18px;
+        font-weight: 600;
+        color: #2c3e50;
+        margin: 0 0 8px 0;
+        line-height: 1.3;
+    }
+    
+    .item-description {
+        color: #6c757d;
+        font-size: 14px;
+        margin: 0 0 8px 0;
+        line-height: 1.4;
+    }
+    
+    .item-price {
+        font-size: 16px;
+        font-weight: 700;
+        color: #e74c3c;
+        margin: 0;
+    }
+    
+    .item-controls {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        flex-shrink: 0;
+    }
+    
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-available {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .status-unavailable {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .toggle-btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        transition: all 0.3s ease;
+        min-width: 80px;
+    }
+    
+    .toggle-btn.available {
+        background: #28a745;
+        color: white;
+        box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    }
+    
+    .toggle-btn.available:hover {
+        background: #218838;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+    }
+    
+    .toggle-btn.unavailable {
+        background: #dc3545;
+        color: white;
+        box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    }
+    
+    .toggle-btn.unavailable:hover {
+        background: #c82333;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+    }
+    
+    .toggle-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+    }
+    
+    .alert {
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        font-weight: 500;
+        animation: slideIn 0.3s ease;
+    }
+    
+    .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .loading {
+        opacity: 0.6;
+        pointer-events: none;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 60px 30px;
+        color: #6c757d;
+    }
+    
+    .empty-state h3 {
+        font-size: 20px;
+        margin: 0 0 10px 0;
+        color: #495057;
+    }
+    
+    .empty-state p {
+        margin: 0 0 20px 0;
+        font-size: 14px;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .container {
+            padding: 0 15px;
+        }
+        
+        .header {
+            padding: 20px;
+        }
+        
+        .menu-items-grid {
+            padding: 20px;
+        }
+        
+        .menu-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .item-controls {
+            width: 100%;
+            justify-content: space-between;
+        }
+        
+        .nav-links {
+            flex-direction: column;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>🍱 菜單管理</h1>
+        <p>管理菜單項目的上架/下架狀態，即時控制商品供應</p>
+        <div class="nav-links">
+            <a href="/admin" class="btn btn-primary">← 返回後台</a>
+            <a href="/admin/logout" class="btn btn-secondary">登出</a>
+        </div>
+    </div>
+
+    <div id="alert-container"></div>
+
+    <div class="menu-container">
+        <div class="menu-header">
+            <h2 class="menu-title">商品列表</h2>
+            <p class="menu-subtitle">點擊下架按鈕即可將商品標記為售完，客戶端將不會顯示該商品</p>
+        </div>
+
+        {% if menu_items %}
+            {% set ns = namespace(current_category='', item_count=0) %}
+            {% for item in menu_items %}
+                {% if item.category != ns.current_category %}
+                    {% if ns.current_category != '' %}
+                            </div>
+                        </div>
+                    {% endif %}
+                    {% set ns.current_category = item.category %}
+                    {% set ns.item_count = 0 %}
+                    <div class="category-section">
+                        <div class="category-header">
+                            <h3 class="category-title">
+                                <span class="category-icon">
+                                    {% if item.category == '滷味' %}🥘
+                                    {% elif item.category == '飲料' %}🥤
+                                    {% else %}🍽️{% endif %}
+                                </span>
+                                {{ item.category }}
+                            </h3>
+                        </div>
+                        <div class="menu-items-grid">
+                {% endif %}
+                
+                <div class="menu-item {{ 'unavailable' if not item.is_available else '' }}" id="item-{{ item.id }}">
+                    <div class="item-info">
+                        <h4 class="item-name">{{ item.name }}</h4>
+                        <p class="item-description">{{ item.description or '暫無描述' }}</p>
+                        <p class="item-price">NT$ {{ item.price }}</p>
+                    </div>
+                    <div class="item-controls">
+                        <span class="status-badge {{ 'status-available' if item.is_available else 'status-unavailable' }}">
+                            {{ '販售中' if item.is_available else '已售完' }}
+                        </span>
+                        <button 
+                            class="toggle-btn {{ 'available' if item.is_available else 'unavailable' }}"
+                            onclick="toggleMenuItem({{ item.id }}, '{{ item.name }}')"
+                            id="btn-{{ item.id }}">
+                            {{ '下架' if item.is_available else '上架' }}
+                        </button>
+                    </div>
+                </div>
+                
+                {% set ns.item_count = ns.item_count + 1 %}
+                {% if loop.last %}
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <h3>📝 尚無菜單項目</h3>
+                <p>系統中還沒有任何商品，請先添加菜單項目</p>
+                <a href="/admin" class="btn btn-primary">返回後台</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showAlert(message, type = 'success') {
+        const container = document.getElementById('alert-container');
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+        
+        container.appendChild(alert);
+        
+        setTimeout(() => {
+            if (container.contains(alert)) {
+                container.removeChild(alert);
+            }
+        }, 4000);
+    }
+
+    function toggleMenuItem(itemId, itemName) {
+        const button = document.getElementById(`btn-${itemId}`);
+        const itemElement = document.getElementById(`item-${itemId}`);
+        
+        if (!button || !itemElement) {
+            showAlert('操作失敗：找不到對應元素', 'error');
+            return;
+        }
+        
+        // 添加載入狀態
+        button.disabled = true;
+        itemElement.classList.add('loading');
+        const originalText = button.textContent;
+        button.textContent = '處理中...';
+        
+        fetch(`/api/admin/menu/${itemId}/toggle`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                const isAvailable = data.is_available;
+                
+                // 更新按鈕樣式和文字
+                button.className = `toggle-btn ${isAvailable ? 'available' : 'unavailable'}`;
+                button.textContent = isAvailable ? '下架' : '上架';
+                
+                // 更新項目樣式
+                if (isAvailable) {
+                    itemElement.classList.remove('unavailable');
+                } else {
+                    itemElement.classList.add('unavailable');
+                }
+                
+                // 更新狀態標籤
+                const statusBadge = itemElement.querySelector('.status-badge');
+                if (statusBadge) {
+                    statusBadge.className = `status-badge ${isAvailable ? 'status-available' : 'status-unavailable'}`;
+                    statusBadge.textContent = isAvailable ? '販售中' : '已售完';
+                }
+                
+                showAlert(`✅ ${data.message}`, 'success');
+            } else {
+                showAlert(`❌ ${data.message || '操作失敗'}`, 'error');
+                button.textContent = originalText;
+            }
+        })
+        .catch(error => {
+            console.error('Toggle error:', error);
+            showAlert(`❌ 網路錯誤，請檢查連接後重試`, 'error');
+            button.textContent = originalText;
+        })
+        .finally(() => {
+            // 移除載入狀態
+            button.disabled = false;
+            itemElement.classList.remove('loading');
+        });
+    }
+
+    // 頁面載入完成後的初始化
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('菜單管理頁面已載入');
+        
+        // 檢查是否有Flash訊息需要顯示
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    showAlert('{{ message }}', '{{ "error" if category == "error" else "success" }}');
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,211 @@
+<!-- 訂單確認彈窗會由 JavaScript 動態生成，這裡放置 CSS 樣式 -->
+<style>
+    /* 訂單確認彈窗樣式 */
+    .order-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .order-modal.show {
+        opacity: 1;
+    }
+
+    .order-modal-content {
+        background: white;
+        border-radius: 15px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow-y: auto;
+        transform: translateY(20px);
+        transition: transform 0.3s ease;
+    }
+
+    .order-modal.show .order-modal-content {
+        transform: translateY(0);
+    }
+
+    .order-info {
+        padding: 20px;
+    }
+
+    .order-id-section {
+        text-align: center;
+        margin-bottom: 25px;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 10px;
+    }
+
+    .order-id-section h3 {
+        margin: 0 0 10px 0;
+        color: #333;
+        font-size: 18px;
+    }
+
+    .order-id {
+        font-size: 32px;
+        font-weight: bold;
+        color: #e74c3c;
+        margin: 10px 0;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 2px;
+    }
+
+    .order-note {
+        color: #666;
+        margin: 10px 0 0 0;
+        font-size: 14px;
+    }
+
+    .order-details h4 {
+        margin: 0 0 15px 0;
+        color: #333;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 5px;
+    }
+
+    .order-items {
+        margin-bottom: 20px;
+    }
+
+    .order-item-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .order-item-row:last-child {
+        border-bottom: none;
+    }
+
+    .item-qty {
+        color: #666;
+        margin: 0 15px;
+        min-width: 60px;
+        text-align: center;
+    }
+
+    .order-summary {
+        border-top: 2px solid #eee;
+        padding-top: 15px;
+        margin-top: 15px;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+
+    .summary-row.total {
+        font-size: 18px;
+        font-weight: bold;
+        color: #e74c3c;
+        border-top: 1px solid #ddd;
+        padding-top: 10px;
+        margin-top: 10px;
+    }
+
+    .estimated-time {
+        background: #e8f5e8;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+    }
+
+    .estimated-time p {
+        margin: 5px 0;
+        color: #2d6a4f;
+    }
+
+    .order-actions {
+        padding: 20px;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 10px;
+    }
+
+    .action-btn {
+        flex: 1;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .action-btn.primary {
+        background: linear-gradient(45deg, #00b894, #00cec9);
+        color: white;
+    }
+
+    .action-btn.primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 184, 148, 0.3);
+    }
+
+    .action-btn.secondary {
+        background: #f8f9fa;
+        color: #333;
+        border: 2px solid #dee2e6;
+    }
+
+    .action-btn.secondary:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 50%;
+        width: 35px;
+        height: 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .close-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* 響應式設計 */
+    @media (max-width: 768px) {
+        .order-modal-content {
+            width: 95%;
+            margin: 10px;
+        }
+
+        .order-id {
+            font-size: 28px;
+        }
+
+        .order-actions {
+            flex-direction: column;
+        }
+
+        .action-btn {
+            margin-bottom: 10px;
+        }
+    }
+</style>

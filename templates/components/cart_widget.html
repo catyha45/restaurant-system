@@ -1,0 +1,40 @@
+<div class="cart-section">
+    <div class="cart-toggle" onclick="toggleCart()">
+        <div class="cart-summary-info">
+            <div class="cart-icon">
+                🛒
+                <span class="cart-badge" id="cart-badge" style="display: none;">0</span>
+            </div>
+            <div>
+                <div>購物車 (<span id="total-items">0</span> 項)</div>
+                <div style="font-size: 18px; font-weight: bold; color: #e74c3c;">
+                    NT$ <span id="total-price">0</span>
+                </div>
+            </div>
+        </div>
+        <div class="chevron" id="cart-chevron">▼</div>
+    </div>
+
+    <div class="cart-details" id="cart-details">
+        <div id="cart-items-list">
+            <div class="empty-cart">
+                購物車是空的，快去選擇美食吧！
+            </div>
+        </div>
+
+        <div class="cart-total" id="cart-total" style="display: none;">
+            <div class="cart-total-row">
+                <span>小計</span>
+                <span>NT$ <span id="subtotal">0</span></span>
+            </div>
+            <div class="cart-total-row cart-total-final">
+                <span>總計</span>
+                <span>NT$ <span id="final-total">0</span></span>
+            </div>
+        </div>
+
+        <button class="checkout-btn" id="checkout-btn" onclick="checkout()" disabled>
+            前往結帳
+        </button>
+    </div>
+</div>

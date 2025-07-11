@@ -1,0 +1,10 @@
+<div class="menu-item" data-category="{{ item.category }}">
+    <div class="item-name">{{ item.name }}</div>
+    <div class="item-description">{{ item.description }}</div>
+    <div class="item-price">NT$ {{ item.price }}</div>
+    <div class="quantity-controls">
+        <button class="quantity-btn" onclick="changeQuantity({{ item.id }}, -1)">-</button>
+        <span class="quantity" id="qty-{{ item.id }}">0</span>
+        <button class="quantity-btn" onclick="changeQuantity({{ item.id }}, 1)">+</button>
+    </div>
+</div>

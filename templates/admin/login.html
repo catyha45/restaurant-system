@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}管理員登入 - 滷味攤{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #333; margin-bottom: 10px;">🔐 管理員登入</h1>
+        <p style="color: #666;">滷味攤後台管理系統</p>
+    </div>
+
+    <form method="POST">
+        <div class="form-group">
+            <label for="password">管理員密碼：</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 15px; font-size: 16px;">
+            登入後台
+        </button>
+    </form>
+
+    <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; text-align: center;">
+        <a href="/" style="color: #667eea; text-decoration: none; font-weight: 500;">
+            ← 返回客戶點餐頁面
+        </a>
+    </div>
+</div>
+{% endblock %}

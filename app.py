@@ -1,15 +1,26 @@
+# -*- coding: utf-8 -*-
+import sys
+import io
+import json
+import time
+from flask import Response
+import os
+
+
+# 修正 Windows 控制台編碼問題
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 # app.py - 主程式檔案（每次重啟需重新登入）
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
-# from linebot import LineBotApi, WebhookHandler
-# from linebot.exceptions import InvalidSignatureError
-# from linebot.models import MessageEvent, TextMessage, TextSendMessage, FlexSendMessage
 import os
 import secrets
 from datetime import datetime, timedelta
-import json
 from functools import wraps
+
 
 # Flask 應用程式設定
 app = Flask(__name__)
@@ -17,7 +28,7 @@ app = Flask(__name__)
 # 動態生成 SECRET_KEY，每次重啟都不同
 app.config['SECRET_KEY'] = secrets.token_hex(32)  # 每次啟動生成新的 64 字元密鑰
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///restaurant.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 管理員密碼設定（生產環境建議使用環境變數）
@@ -26,14 +37,15 @@ ADMIN_PASSWORD = 'admin123'  # 請在生產環境中更換為安全密碼
 # 初始化擴充套件
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-
-# LINE Bot 設定 (暫時用假的 token，等有真的再換)
-LINE_CHANNEL_ACCESS_TOKEN = 'YOUR_CHANNEL_ACCESS_TOKEN'
-LINE_CHANNEL_SECRET = 'YOUR_CHANNEL_SECRET'
+# ========================
+# 輪詢通知系統
+# ========================
+last_order_id = 0
+pending_notifications = []
 
 # 啟動時印出新的 SECRET_KEY 資訊（僅用於除錯）
-print(f"🔑 新的 SECRET_KEY 已生成: {app.config['SECRET_KEY'][:16]}...")
-print("⚠️  重啟後所有 Session 將失效，需重新登入")
+print(f"[KEY] 新的 SECRET_KEY 已生成: {app.config['SECRET_KEY'][:16]}...")
+print("[WARNING] 重啟後所有 Session 將失效，需重新登入")
 
 
 # ========================
@@ -54,7 +66,7 @@ def admin_required(f):
 
 
 # ========================
-# 資料庫模型（保持不變）
+# 資料庫模型
 # ========================
 
 class MenuItem(db.Model):
@@ -83,7 +95,6 @@ class MenuItem(db.Model):
 class Order(db.Model):
     """訂單"""
     id = db.Column(db.Integer, primary_key=True)
-    line_user_id = db.Column(db.String(100), nullable=False)
     customer_name = db.Column(db.String(100))
     contact_phone = db.Column(db.String(20))
     total_amount = db.Column(db.Integer, nullable=False)
@@ -101,7 +112,6 @@ class Order(db.Model):
     def to_dict(self):
         return {
             'id': self.id,
-            'line_user_id': self.line_user_id,
             'customer_name': self.customer_name,
             'contact_phone': self.contact_phone,
             'total_amount': self.total_amount,
@@ -140,11 +150,35 @@ class OrderItem(db.Model):
 
 
 # ========================
-# LINE Bot 相關函數（保持不變）
+# 即時通知系統
 # ========================
 
-def send_order_confirmation(line_user_id, order):
-    """發送訂單確認訊息 - 目前只印出來，不實際發送"""
+# 找到原本的 send_notification 函數，完全替換為：
+
+def send_notification(notification_type, data):
+    """發送通知（輪詢版本）"""
+    global pending_notifications
+
+    notification = {
+        'type': notification_type,
+        'data': data,
+        'timestamp': datetime.now().isoformat()
+    }
+
+    pending_notifications.append(notification)
+    print(f"[NOTIFICATION] {notification_type}: {data}")
+
+    # 保持最多 50 個通知，避免記憶體問題
+    if len(pending_notifications) > 50:
+        pending_notifications = pending_notifications[-50:]
+
+
+# ========================
+# 訂單通知函數
+# ========================
+
+def log_order_confirmation(order):
+    """記錄訂單確認資訊並發送通知"""
     try:
         items_text = "\n".join([
             f"{item.menu_item.name} x{item.quantity} - NT$ {item.subtotal}"
@@ -159,7 +193,7 @@ def send_order_confirmation(line_user_id, order):
         elif order.delivery_type == "delivery":
             delivery_info = f"外送服務\n地址: {order.delivery_address}"
 
-        message_text = f"""🎉 訂單確認成功！
+        message_text = f"""[SUCCESS] 訂單確認成功！
 
 訂單編號: #{order.id}
 {items_text}
@@ -170,17 +204,25 @@ def send_order_confirmation(line_user_id, order):
 
 感謝您的訂購！"""
 
-        print(f"=== LINE 訊息模擬 ===")
-        print(f"發送給用戶: {line_user_id}")
+        print("=== 訂單確認資訊 ===")
         print(message_text)
         print("==================")
 
+        # 發送即時通知到後台
+        send_notification('new_order', {
+            'order_id': order.id,
+            'customer_name': order.customer_name or '網頁用戶',
+            'total_amount': order.total_amount,
+            'delivery_type': order.delivery_type,
+            'items_count': len(order.items)
+        })
+
     except Exception as e:
-        print(f"發送確認訊息失敗: {e}")
+        print(f"記錄確認訊息失敗: {e}")
 
 
-def send_status_update(line_user_id, order_id, status):
-    """發送訂單狀態更新 - 目前只印出來，不實際發送"""
+def log_status_update(order_id, status):
+    """記錄訂單狀態更新並發送通知"""
     try:
         status_messages = {
             'preparing': '您的訂單正在製作中，請稍候...',
@@ -190,14 +232,83 @@ def send_status_update(line_user_id, order_id, status):
 
         if status in status_messages:
             message_text = f"訂單 #{order_id} 狀態更新：\n{status_messages[status]}"
-            print(f"=== LINE 狀態更新模擬 ===")
-            print(f"發送給用戶: {line_user_id}")
+            print("=== 訂單狀態更新 ===")
             print(message_text)
-            print("======================")
+            print("===================")
+
+            # 發送即時通知到後台
+            send_notification('order_status_updated', {
+                'order_id': order_id,
+                'status': status,
+                'message': status_messages[status]
+            })
 
     except Exception as e:
-        print(f"發送狀態更新失敗: {e}")
+        print(f"記錄狀態更新失敗: {e}")
 
+
+# ========================
+# SSE 路由
+# ========================
+
+
+
+@app.route('/api/admin/check-updates')
+@admin_required
+def check_updates():
+    """檢查是否有新訂單或更新"""
+    global last_order_id, pending_notifications
+
+    try:
+        # 檢查是否有新訂單
+        latest_order = Order.query.order_by(Order.id.desc()).first()
+        has_new_order = False
+
+        if latest_order and latest_order.id > last_order_id:
+            has_new_order = True
+            last_order_id = latest_order.id
+
+            # 準備新訂單資訊
+            new_order_data = {
+                'type': 'new_order',
+                'data': {
+                    'order_id': latest_order.id,
+                    'customer_name': latest_order.customer_name or '網頁用戶',
+                    'total_amount': latest_order.total_amount,
+                    'delivery_type': latest_order.delivery_type,
+                    'items_count': len(latest_order.items),
+                    'created_at': latest_order.created_at.isoformat()
+                }
+            }
+
+            return jsonify({
+                'has_updates': True,
+                'notifications': [new_order_data]
+            })
+
+        # 檢查待處理通知
+        if pending_notifications:
+            notifications = pending_notifications.copy()
+            pending_notifications.clear()
+
+            return jsonify({
+                'has_updates': True,
+                'notifications': notifications
+            })
+
+        # 沒有更新
+        return jsonify({
+            'has_updates': False,
+            'notifications': []
+        })
+
+    except Exception as e:
+        print(f"[ERROR] 檢查更新失敗: {e}")
+        return jsonify({
+            'has_updates': False,
+            'notifications': [],
+            'error': str(e)
+        }), 500
 
 # ========================
 # 管理員驗證路由
@@ -218,13 +329,13 @@ def admin_login():
             session['admin_login_time'] = datetime.now().isoformat()
             session['server_start_time'] = datetime.now().isoformat()  # 記錄伺服器啟動時間
             flash('登入成功！', 'success')
-            print(f"✅ 管理員於 {datetime.now().strftime('%H:%M:%S')} 登入成功")
+            print(f"[SUCCESS] 管理員於 {datetime.now().strftime('%H:%M:%S')} 登入成功")
             return redirect(url_for('admin_dashboard'))
         else:
             flash('密碼錯誤，請重新輸入', 'error')
-            print(f"❌ 管理員登入失敗 - 密碼錯誤")
+            print("[ERROR] 管理員登入失敗 - 密碼錯誤")
 
-    return render_template('admin_login.html')
+    return render_template('admin/login.html')
 
 
 @app.route('/admin/logout')
@@ -234,7 +345,7 @@ def admin_logout():
     session.pop('admin_login_time', None)
     session.pop('server_start_time', None)
     flash('已成功登出', 'info')
-    print(f"📤 管理員於 {datetime.now().strftime('%H:%M:%S')} 登出")
+    print(f"[LOGOUT] 管理員於 {datetime.now().strftime('%H:%M:%S')} 登出")
     return redirect(url_for('admin_login'))
 
 
@@ -247,7 +358,7 @@ def index():
     """首頁 - 點餐介面（客戶專用）"""
     menu_items = MenuItem.query.filter_by(is_available=True).all()
     categories = db.session.query(MenuItem.category).distinct().all()
-    return render_template('menu.html',
+    return render_template('customer/menu.html',
                            menu_items=menu_items,
                            categories=[cat[0] for cat in categories])
 
@@ -291,15 +402,30 @@ def admin_dashboard():
             db.joinedload(Order.items).joinedload(OrderItem.menu_item)
         ).order_by(Order.created_at.desc()).limit(50).all()
 
-        return render_template('admin.html', stats=stats, orders=orders)
+        return render_template('admin/dashboard.html', stats=stats, orders=orders)
 
     except Exception as e:
-        print(f"❌ 後台查詢失敗: {e}")
+        print(f"[ERROR] 後台查詢失敗: {e}")
         # 回傳空資料避免頁面錯誤
-        return render_template('admin.html',
+        return render_template('admin/dashboard.html',
                                stats={'today_orders': 0, 'today_revenue': 0, 'pending_orders': 0,
                                       'completed_orders': 0},
                                orders=[])
+
+@app.route('/admin/menu')
+@admin_required
+def admin_menu():
+        """菜單管理頁面"""
+        try:
+            menu_items = MenuItem.query.order_by(MenuItem.category, MenuItem.name).all()
+            categories = db.session.query(MenuItem.category).distinct().all()
+
+            return render_template('admin/menu.html',
+                                   menu_items=menu_items,
+                                   categories=[cat[0] for cat in categories])
+        except Exception as e:
+            flash(f'載入菜單失敗: {str(e)}', 'error')
+            return redirect(url_for('admin_dashboard'))
 
 
 # ========================
@@ -314,7 +440,6 @@ def create_order():
 
         # 建立訂單
         order = Order(
-            line_user_id=data.get('line_user_id'),
             customer_name=data.get('customer_name'),
             contact_phone=data.get('contact_phone'),
             total_amount=data.get('total_amount'),
@@ -340,9 +465,8 @@ def create_order():
 
         db.session.commit()
 
-        # 發送 LINE 確認訊息 (模擬)
-        if order.line_user_id:
-            send_order_confirmation(order.line_user_id, order)
+        # 記錄訂單確認資訊並發送通知
+        log_order_confirmation(order)
 
         return jsonify({
             'success': True,
@@ -373,9 +497,8 @@ def update_order_status(order_id):
 
         db.session.commit()
 
-        # 發送狀態更新通知 (模擬)
-        if order.line_user_id:
-            send_status_update(order.line_user_id, order_id, new_status)
+        # 記錄狀態更新並發送通知
+        log_status_update(order_id, new_status)
 
         return jsonify({
             'success': True,
@@ -402,6 +525,74 @@ def get_menu():
 
     menu_items = query.all()
     return jsonify([item.to_dict() for item in menu_items])
+
+
+# 在 @app.route('/api/menu') 之後添加以下三個路由
+
+@app.route('/api/admin/menu', methods=['GET'])
+@admin_required
+def get_admin_menu():
+    """取得所有菜單項目（包含已停售）"""
+    try:
+        menu_items = MenuItem.query.order_by(MenuItem.category, MenuItem.name).all()
+        return jsonify([item.to_dict() for item in menu_items])
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/menu/<int:item_id>/toggle', methods=['PATCH'])
+@admin_required
+def toggle_menu_item(item_id):
+    """切換菜單項目的可用狀態"""
+    try:
+        item = MenuItem.query.get_or_404(item_id)
+        item.is_available = not item.is_available
+        db.session.commit()
+
+        status_text = "上架" if item.is_available else "下架"
+        print(f"[MENU] {item.name} 已{status_text}")
+
+        # 發送通知
+        send_notification('menu_updated', {
+            'item_id': item.id,
+            'item_name': item.name,
+            'is_available': item.is_available,
+            'action': status_text
+        })
+
+        return jsonify({
+            'success': True,
+            'message': f'{item.name} 已{status_text}',
+            'is_available': item.is_available
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+    @app.route('/api/admin/menu/<int:item_id>', methods=['PUT'])
+    @admin_required
+    def update_menu_item(item_id):
+        """更新菜單項目資訊"""
+        try:
+            data = request.get_json()
+            item = MenuItem.query.get_or_404(item_id)
+
+            item.name = data.get('name', item.name)
+            item.description = data.get('description', item.description)
+            item.price = data.get('price', item.price)
+            item.category = data.get('category', item.category)
+
+            db.session.commit()
+
+            return jsonify({
+                'success': True,
+                'message': '菜單項目已更新',
+                'item': item.to_dict()
+            })
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': str(e)}), 500
 
 
 # ========================
@@ -453,98 +644,56 @@ def debug_info():
             </style>
         </head>
         <body>
-            <h1>🔍 系統除錯資訊</h1>
+            <h1>[DEBUG] 系統除錯資訊</h1>
 
             <div class="info warning">
-                <h3>🔑 Session 安全資訊</h3>
+                <h3>[KEY] Session 安全資訊</h3>
                 <p><strong>管理員登入狀態:</strong> {session_info['admin_logged_in']}</p>
                 <p><strong>登入時間:</strong> {session_info['admin_login_time']}</p>
                 <p><strong>伺服器啟動時間:</strong> {session_info['server_start_time']}</p>
                 <p><strong>SECRET_KEY (前16字元):</strong> {session_info['secret_key_preview']}</p>
-                <p><strong>⚠️ 重啟後 SECRET_KEY 會變更，需重新登入</strong></p>
+                <p><strong>[WARNING] 重啟後 SECRET_KEY 會變更，需重新登入</strong></p>
                 <a href="/admin/logout" class="btn logout">登出</a>
             </div>
 
             <div class="info success">
-                <h3>📊 資料庫統計</h3>
+                <h3>[INFO] 資料庫統計</h3>
                 <p><strong>菜單項目數量:</strong> {menu_count}</p>
                 <p><strong>訂單數量:</strong> {order_count}</p>
                 <p><strong>訂單明細數量:</strong> {order_item_count}</p>
                 <p><strong>目前時間:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
             </div>
-        """
-
-        if orders:
-            debug_html += f"""
-            <div class="info success">
-                <h3>✅ 找到 {len(orders)} 筆訂單</h3>
-            </div>
 
             <div class="info">
-                <h3>📋 詳細訂單資訊</h3>
-            """
-
-            for i, order in enumerate(orders[:5]):  # 只顯示前5筆
-                debug_html += f"""
-                <div class="order-detail">
-                    <h4>訂單 #{order.id}</h4>
-                    <p><strong>客戶:</strong> {order.customer_name or '匿名'}</p>
-                    <p><strong>金額:</strong> NT$ {order.total_amount}</p>
-                    <p><strong>狀態:</strong> {order.order_status}</p>
-                    <p><strong>配送方式:</strong> {order.delivery_type}</p>
-                    <p><strong>建立時間:</strong> {order.created_at}</p>
-                    <p><strong>商品數量:</strong> {len(order.items)}</p>
-
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>商品名稱</th>
-                                <th>單價</th>
-                                <th>數量</th>
-                                <th>小計</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                """
-
-                for item in order.items:
-                    debug_html += f"""
-                            <tr>
-                                <td>{item.menu_item.name if item.menu_item else 'N/A'}</td>
-                                <td>NT$ {item.unit_price}</td>
-                                <td>{item.quantity}</td>
-                                <td>NT$ {item.subtotal}</td>
-                            </tr>
-                    """
-
-                debug_html += """
-                        </tbody>
-                    </table>
-                </div>
-                """
-
-            debug_html += "</div>"
-        else:
-            debug_html += """
-            <div class="info error">
-                <h3>❌ 沒有找到任何訂單</h3>
-                <p>可能的原因：</p>
-                <ul>
-                    <li>尚未建立任何訂單</li>
-                    <li>資料庫查詢問題</li>
-                    <li>關聯資料問題</li>
-                </ul>
+                <h3>[INFO] 測試連結</h3>
+                <a href="/" class="btn">[MENU] 客戶點餐頁面</a>
+                <a href="/admin" class="btn">[ADMIN] 後台管理</a>
+                <a href="/api/menu" class="btn">[API] 菜單</a>
+                <a href="/dev/reset-db" class="btn" style="background: #dc3545;">[RESET] 重置資料庫</a>
+                <button onclick="testNotification()" class="btn" style="background: #28a745;">[TEST] 測試通知</button>
             </div>
-            """
 
-        debug_html += """
-            <div class="info">
-                <h3>🔗 測試連結</h3>
-                <a href="/" class="btn">🍽️ 客戶點餐頁面</a>
-                <a href="/admin" class="btn">⚙️ 後台管理</a>
-                <a href="/api/menu" class="btn">📋 API: 菜單</a>
-                <a href="/dev/reset-db" class="btn" style="background: #dc3545;">🗑️ 重置資料庫</a>
-            </div>
+            <script>
+                function testNotification() {{
+                    fetch('/api/orders', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            customer_name: '測試客戶',
+                            total_amount: 100,
+                            delivery_type: 'takeout',
+                            items: [{{
+                                menu_item_id: 1,
+                                quantity: 1,
+                                unit_price: 100,
+                                subtotal: 100
+                            }}]
+                        }})
+                    }})
+                    .then(response => response.json())
+                    .then(data => alert('測試訂單已送出: ' + JSON.stringify(data)));
+                }}
+            </script>
         </body>
         </html>
         """
@@ -555,7 +704,7 @@ def debug_info():
         return f"""
         <html>
         <body style="font-family: Arial; padding: 20px;">
-            <h1>❌ 除錯時發生錯誤</h1>
+            <h1>[ERROR] 除錯時發生錯誤</h1>
             <p style="color: red; background: #ffeeee; padding: 15px; border-radius: 5px;">
                 <strong>錯誤詳情:</strong><br>
                 {str(e)}
@@ -579,10 +728,10 @@ def reset_database():
             db.drop_all()
             db.create_all()
             init_db()
-            flash('✅ 資料庫已重置，範例資料已建立', 'success')
+            flash('資料庫已重置，範例資料已建立', 'success')
             return redirect(url_for('admin_dashboard'))
         except Exception as e:
-            flash(f'❌ 重置失敗: {str(e)}', 'error')
+            flash(f'重置失敗: {str(e)}', 'error')
             return redirect(url_for('admin_dashboard'))
     else:
         flash('僅在開發模式下可用', 'error')
@@ -590,7 +739,7 @@ def reset_database():
 
 
 # ========================
-# 初始化資料（保持不變）
+# 初始化資料
 # ========================
 
 def init_db():
@@ -600,24 +749,24 @@ def init_db():
 
         # 檢查是否已有資料
         if MenuItem.query.count() == 0:
-            # 建立範例菜單
+            # 建立滷味攤的範例菜單
             menu_items = [
-                MenuItem(name="經典牛肉堡", description="多汁牛肉排配新鮮蔬菜", price=180, category="主餐"),
-                MenuItem(name="奶油培根義大利麵", description="濃郁奶油醬配脆培根", price=220, category="主餐"),
-                MenuItem(name="炸雞排飯", description="酥脆炸雞排配白飯", price=150, category="主餐"),
-                MenuItem(name="精品咖啡", description="現磨咖啡豆，香濃回甘", price=120, category="飲料"),
-                MenuItem(name="鮮榨柳橙汁", description="100% 新鮮柳橙現榨", price=80, category="飲料"),
-                MenuItem(name="珍珠奶茶", description="香濃奶茶配Q彈珍珠", price=60, category="飲料"),
-                MenuItem(name="巧克力蛋糕", description="濃郁巧克力，甜而不膩", price=150, category="甜點"),
-                MenuItem(name="起司蛋糕", description="滑順起司，入口即化", price=130, category="甜點"),
+                MenuItem(name="滷蛋", description="古早味滷蛋，香濃入味", price=15, category="滷味"),
+                MenuItem(name="滷豆干", description="Q彈豆干，滷汁飽滿", price=20, category="滷味"),
+                MenuItem(name="滷海帶", description="軟嫩海帶，清爽不膩", price=25, category="滷味"),
+                MenuItem(name="滷大腸", description="香Q大腸，老饕最愛", price=35, category="滷味"),
+                MenuItem(name="滷雞腿", description="嫩滑雞腿，肉汁豐富", price=50, category="滷味"),
+                MenuItem(name="麻辣鴨血", description="麻辣鮮香，口感滑嫩", price=30, category="滷味"),
+                MenuItem(name="冬瓜茶", description="古早味冬瓜茶，清香甘甜", price=25, category="飲料"),
+                MenuItem(name="青草茶", description="消暑聖品，甘苦回甘", price=25, category="飲料"),
             ]
 
             for item in menu_items:
                 db.session.add(item)
 
             db.session.commit()
-            print("✅ 範例菜單已建立")
-            print("📝 資料庫初始化完成")
+            print("[SUCCESS] 滷味攤菜單已建立")
+            print("[INFO] 資料庫初始化完成")
 
 
 # ========================
@@ -627,14 +776,15 @@ def init_db():
 if __name__ == '__main__':
     import os
 
-    print("🚀 正在啟動餐廳點餐系統...")
-    print("🔐 安全模式: 每次重啟需重新登入")
+    print("[STARTUP] 正在啟動滷味攤點餐系統...")
+    print("[SECURITY] 安全模式: 每次重啟需重新登入")
+    print("[REALTIME] 即時通知系統已啟用")
     init_db()
-    print("🌐 請開啟瀏覽器訪問:")
+    print("[INFO] 請開啟瀏覽器訪問:")
     print(" 客戶點餐: http://127.0.0.1:5000/")
     print(" 後台管理: http://127.0.0.1:5000/admin/login")
-    print("💡 管理員密碼: admin123")
-    print("💡 按 Ctrl+C 停止服務")
+    print("[INFO] 管理員密碼: admin123")
+    print("[INFO] 按 Ctrl+C 停止服務")
 
     # 本地開發時使用debug模式，部署時使用環境變數
     if os.environ.get('RAILWAY_ENVIRONMENT'):

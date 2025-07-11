@@ -1,0 +1,294 @@
+/* ===================
+   購物車專用樣式
+=================== */
+
+/* 購物車主區域 */
+.cart-section {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* 購物車標題欄 */
+.cart-toggle {
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s ease;
+}
+
+.cart-toggle:hover {
+    background: #e9ecef;
+}
+
+/* 購物車摘要資訊 */
+.cart-summary-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.cart-icon {
+    position: relative;
+    font-size: 24px;
+}
+
+.cart-badge {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: #e74c3c;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+/* 購物車詳細內容 */
+.cart-details {
+    display: none;
+    padding: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: white;
+}
+
+.cart-details.open {
+    display: block;
+}
+
+/* 購物車項目 */
+.cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.cart-item:last-child {
+    border-bottom: none;
+}
+
+.cart-item-info {
+    flex: 1;
+}
+
+.cart-item-name {
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+.cart-item-price {
+    color: #666;
+    font-size: 14px;
+}
+
+.cart-item-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cart-item-qty {
+    font-weight: bold;
+    min-width: 20px;
+    text-align: center;
+    color: #333;
+}
+
+/* 購物車控制按鈕 */
+.cart-qty-btn:hover {
+    background: #5a67d8;
+    transform: scale(1.1);
+}
+
+.cart-qty-btn:active {
+    transform: scale(0.95);
+}
+
+/* 購物車總計區域 */
+.cart-total {
+    padding: 15px 0;
+    border-top: 2px solid #dee2e6;
+    margin-top: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.cart-total-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.cart-total-final {
+    font-size: 18px;
+    font-weight: bold;
+    color: #e74c3c;
+    border-top: 1px solid #dee2e6;
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+/* 結帳按鈕 */
+.checkout-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(45deg, #00b894, #00cec9);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-top: 15px;
+    transition: all 0.3s ease;
+}
+
+.checkout-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 184, 148, 0.3);
+}
+
+.checkout-btn:disabled {
+    background: #cbd5e0;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 空購物車提示 */
+.empty-cart {
+    text-align: center;
+    color: #666;
+    padding: 20px;
+    font-style: italic;
+}
+
+/* 展開/收合箭頭 */
+.chevron {
+    transition: transform 0.3s ease;
+    font-size: 18px;
+    color: #666;
+}
+
+.chevron.rotated {
+    transform: rotate(180deg);
+}
+
+/* ===================
+   購物車動畫效果
+=================== */
+
+@keyframes cartItemAdd {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.cart-item {
+    animation: cartItemAdd 0.3s ease;
+}
+
+/* ===================
+   響應式設計
+=================== */
+
+@media (max-width: 768px) {
+    .cart-toggle {
+        padding: 12px 15px;
+    }
+
+    .cart-summary-info {
+        gap: 10px;
+    }
+
+    .cart-details {
+        padding: 15px;
+        max-height: 250px;
+    }
+
+    .cart-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 15px 0;
+    }
+
+    .cart-item-controls {
+        align-self: flex-end;
+        gap: 8px;
+    }
+
+    .cart-qty-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+
+    .checkout-btn {
+        padding: 12px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .cart-section {
+        max-height: 50vh;
+    }
+
+    .cart-details {
+        max-height: 200px;
+    }
+
+    .cart-total {
+        padding: 10px;
+    }
+
+    .cart-total-row {
+        font-size: 13px;
+    }
+
+    .cart-total-final {
+        font-size: 16px;
+    }
+}btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: #667eea;
+    color: white;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cart-qty-

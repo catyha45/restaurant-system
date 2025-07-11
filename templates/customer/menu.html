@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}線上點餐 - 滷味攤{% endblock %}
+
+{% block extra_css %}
+<!-- 引入訂單彈窗樣式 -->
+{% include 'components/order_modal.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>🍽️ 滷味攤</h1>
+        <p>新鮮美味，現點現做</p>
+    </div>
+
+    <!-- 分類篩選 -->
+    <div class="category-filter">
+        <button class="filter-btn active" onclick="filterCategory('all')">全部</button>
+        {% for category in categories %}
+        <button class="filter-btn" onclick="filterCategory('{{ category }}')">{{ category }}</button>
+        {% endfor %}
+    </div>
+
+    <!-- 菜單項目列表 -->
+    <div class="menu-grid">
+        {% for item in menu_items %}
+            {% include 'components/menu_item.html' %}
+        {% endfor %}
+    </div>
+
+    <div style="height: 120px;"></div>
+</div>
+
+<!-- 購物車小部件 -->
+{% include 'components/cart_widget.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const cart = {};
+    const menuItems = {
+        {% for item in menu_items %}
+        {{ item.id }}: {
+            name: "{{ item.name }}",
+            price: {{ item.price }},
+            category: "{{ item.category }}"
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    function changeQuantity(itemId, change) {
+        if (!cart[itemId]) {
+            cart[itemId] = 0;
+        }
+
+        const newQty = cart[itemId] + change;
+        if (newQty >= 0) {
+            cart[itemId] = newQty;
+            document.getElementById(`qty-${itemId}`).textContent = newQty;
+            updateCartDisplay();
+        }
+    }
+
+    function updateCartDisplay() {
+        let totalItems = 0;
+        let totalPrice = 0;
+        const cartItemsList = document.getElementById('cart-items-list');
+
+        cartItemsList.innerHTML = '';
+
+        let hasItems = false;
+        Object.entries(cart).forEach(([itemId, qty]) => {
+            if (qty > 0) {
+                hasItems = true;
+                totalItems += qty;
+                totalPrice += qty * menuItems[itemId].price;
+
+                const cartItem = createCartItemElement(itemId, qty);
+                cartItemsList.appendChild(cartItem);
+            }
+        });
+
+        if (!hasItems) {
+            cartItemsList.innerHTML = '<div class="empty-cart">購物車是空的，快去選擇美食吧！</div>';
+        }
+
+        updateCartSummary(totalItems, totalPrice);
+    }
+
+    function createCartItemElement(itemId, qty) {
+        const item = menuItems[itemId];
+        const subtotal = qty * item.price;
+
+        const cartItem = document.createElement('div');
+        cartItem.className = 'cart-item';
+        cartItem.innerHTML = `
+            <div class="cart-item-info">
+                <div class="cart-item-name">${item.name}</div>
+                <div class="cart-item-price">NT$ ${item.price} × ${qty}</div>
+            </div>
+            <div class="cart-item-controls">
+                <button class="cart-qty-btn" onclick="changeQuantity(${itemId}, -1)">-</button>
+                <span class="cart-item-qty">${qty}</span>
+                <button class="cart-qty-btn" onclick="changeQuantity(${itemId}, 1)">+</button>
+                <div style="margin-left: 10px; font-weight: bold;">NT$ ${subtotal}</div>
+            </div>
+        `;
+
+        return cartItem;
+    }
+
+    function updateCartSummary(totalItems, totalPrice) {
+        document.getElementById('total-items').textContent = totalItems;
+        document.getElementById('total-price').textContent = totalPrice;
+        document.getElementById('subtotal').textContent = totalPrice;
+        document.getElementById('final-total').textContent = totalPrice;
+
+        const badge = document.getElementById('cart-badge');
+        if (totalItems > 0) {
+            badge.style.display = 'flex';
+            badge.textContent = totalItems > 99 ? '99+' : totalItems;
+        } else {
+            badge.style.display = 'none';
+        }
+
+        const cartTotal = document.getElementById('cart-total');
+        cartTotal.style.display = totalItems > 0 ? 'block' : 'none';
+
+        const checkoutBtn = document.getElementById('checkout-btn');
+        checkoutBtn.disabled = totalItems === 0;
+    }
+
+    function toggleCart() {
+        const cartDetails = document.getElementById('cart-details');
+        const chevron = document.getElementById('cart-chevron');
+
+        cartDetails.classList.toggle('open');
+        chevron.classList.toggle('rotated');
+    }
+
+    function filterCategory(category) {
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        event.target.classList.add('active');
+
+        document.querySelectorAll('.menu-item').forEach(item => {
+            if (category === 'all' || item.dataset.category === category) {
+                item.style.display = 'block';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    }
+
+    function checkout() {
+        if (Object.values(cart).every(qty => qty === 0)) {
+            showNotification('請選擇商品！', 'error');
+            return;
+        }
+
+        const orderItems = [];
+        let total = 0;
+
+        Object.entries(cart).forEach(([itemId, qty]) => {
+            if (qty > 0) {
+                const item = menuItems[itemId];
+                orderItems.push({
+                    menu_item_id: parseInt(itemId),
+                    quantity: qty,
+                    unit_price: item.price,
+                    subtotal: qty * item.price
+                });
+                total += qty * item.price;
+            }
+        });
+
+        submitOrder({
+            customer_name: '網頁用戶',
+            total_amount: total,
+            delivery_type: 'takeout',
+            items: orderItems
+            });
+    }
+
+    async function submitOrder(orderData) {
+        try {
+            const response = await fetch('/api/orders', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(orderData)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showOrderConfirmation(result.order_id, orderData);
+
+                Object.keys(cart).forEach(key => {
+                    cart[key] = 0;
+                    document.getElementById(`qty-${key}`).textContent = 0;
+                });
+
+                updateCartDisplay();
+
+                const cartDetails = document.getElementById('cart-details');
+                const chevron = document.getElementById('cart-chevron');
+                cartDetails.classList.remove('open');
+                chevron.classList.remove('rotated');
+            } else {
+                showNotification('訂單建立失敗，請稍後再試', 'error');
+            }
+        } catch (error) {
+            console.error('提交訂單失敗:', error);
+            showNotification('網路錯誤，請稍後再試', 'error');
+        }
+    }
+
+    function showOrderConfirmation(orderId, orderData) {
+        const modal = document.createElement('div');
+        modal.className = 'order-modal';
+        modal.innerHTML = `
+            <div class="order-modal-content">
+                <div class="order-header">
+                    <h2>🎉 訂單確認</h2>
+                    <button class="close-btn" onclick="closeOrderModal()">&times;</button>
+                </div>
+
+                <div class="order-info">
+                    <div class="order-id-section">
+                        <h3>訂單編號</h3>
+                        <div class="order-id">#${orderId}</div>
+                        <p class="order-note">建議將訂單編號傳送到LINE保存</p>
+                    </div>
+
+                    <div class="order-details">
+                        <h4>訂單詳情</h4>
+                        <div class="order-items">
+                            ${generateOrderItemsHTML(orderData.items)}
+                        </div>
+
+                        <div class="order-summary">
+                            <div class="summary-row">
+                                <span>配送方式</span>
+                                <span>${getDeliveryTypeText(orderData.delivery_type)}</span>
+                            </div>
+                            <div class="summary-row total">
+                                <span>總金額</span>
+                                <span>NT$ ${orderData.total_amount}</span>
+                            </div>
+                        </div>
+
+                        <div class="estimated-time">
+                            <p>📱 預計準備時間：15-20 分鐘</p>
+                            <p>🔔 訂單狀態將透過系統通知您</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="order-actions">
+                    <button class="action-btn secondary" onclick="shareToLine('${orderId}', '${orderData.total_amount}', '${orderData.delivery_type}')">
+                        📱 傳送到LINE
+                    </button>
+                    <button class="action-btn primary" onclick="closeOrderModal()">確認</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        setTimeout(() => {
+            modal.classList.add('show');
+        }, 10);
+    }
+
+    function generateOrderItemsHTML(items) {
+        return items.map(item => {
+            const menuItem = menuItems[item.menu_item_id];
+            return `
+                <div class="order-item-row">
+                    <span class="item-name">${menuItem.name}</span>
+                    <span class="item-qty">× ${item.quantity}</span>
+                    <span class="item-price">NT$ ${item.subtotal}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function getDeliveryTypeText(type) {
+        const types = {
+            'dine-in': '內用',
+            'takeout': '外帶',
+            'delivery': '外送'
+        };
+        return types[type] || '外帶';
+    }
+
+    function closeOrderModal() {
+        const modal = document.querySelector('.order-modal');
+        if (modal) {
+            modal.classList.remove('show');
+            setTimeout(() => {
+                modal.remove();
+            }, 300);
+        }
+    }
+
+    function shareToLine(orderId, totalAmount, deliveryType) {
+        const message = `🍽️ 滷味攤訂單
+📝 訂單編號：#${orderId}
+💰 總金額：NT$ ${totalAmount}
+📅 下單時間：${new Date().toLocaleString('zh-TW')}
+🏪 配送方式：${getDeliveryTypeText(deliveryType)}`;
+
+        const encodedMessage = encodeURIComponent(message);
+        const lineUrl = `https://line.me/R/msg/text/?${encodedMessage}`;
+
+        window.open(lineUrl, '_blank');
+    }
+
+    // 初始化
+    updateCartDisplay();
+</script>
+{% endblock %}

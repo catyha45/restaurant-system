@@ -103,6 +103,7 @@ class Order(db.Model):
     table_number = db.Column(db.String(10))
     order_status = db.Column(db.String(20), default='pending')  # pending, preparing, ready, completed, cancelled
     notes = db.Column(db.Text)
+    line_user_id = db.Column(db.String(100))  # 加上這行
     created_at = db.Column(db.DateTime, default=datetime.now)
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -436,7 +437,9 @@ def admin_menu():
 def create_order():
     """建立新訂單"""
     try:
+        print("[DEBUG] 收到訂單請求")
         data = request.get_json()
+        print(f"[DEBUG] 請求資料: {data}")
 
         # 建立訂單
         order = Order(
@@ -446,11 +449,13 @@ def create_order():
             delivery_type=data.get('delivery_type'),
             delivery_address=data.get('delivery_address'),
             table_number=data.get('table_number'),
-            notes=data.get('notes')
+            notes=data.get('notes'),
+            line_user_id = data.get('line_user_id', 'web_user')  # 加上這行
+
         )
 
         db.session.add(order)
-        db.session.flush()  # 取得 order.id
+        db.session.flush()
 
         # 建立訂單明細
         for item_data in data.get('items', []):
@@ -464,8 +469,6 @@ def create_order():
             db.session.add(order_item)
 
         db.session.commit()
-
-        # 記錄訂單確認資訊並發送通知
         log_order_confirmation(order)
 
         return jsonify({
@@ -476,10 +479,12 @@ def create_order():
 
     except Exception as e:
         db.session.rollback()
-        print(f"建立訂單失敗: {e}")
+        print(f"[ERROR] 建立訂單失敗: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'success': False,
-            'message': '訂單建立失敗'
+            'message': str(e)
         }), 500
 
 
@@ -570,29 +575,30 @@ def toggle_menu_item(item_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
-    @app.route('/api/admin/menu/<int:item_id>', methods=['PUT'])
-    @admin_required
-    def update_menu_item(item_id):
-        """更新菜單項目資訊"""
-        try:
-            data = request.get_json()
-            item = MenuItem.query.get_or_404(item_id)
 
-            item.name = data.get('name', item.name)
-            item.description = data.get('description', item.description)
-            item.price = data.get('price', item.price)
-            item.category = data.get('category', item.category)
+@app.route('/api/admin/menu/<int:item_id>', methods=['PUT'])
+@admin_required
+def update_menu_item(item_id):
+   """更新菜單項目資訊"""
+   try:
+       data = request.get_json()
+       item = MenuItem.query.get_or_404(item_id)
 
-            db.session.commit()
+       item.name = data.get('name', item.name)
+       item.description = data.get('description', item.description)
+       item.price = data.get('price', item.price)
+       item.category = data.get('category', item.category)
 
-            return jsonify({
-                'success': True,
-                'message': '菜單項目已更新',
-                'item': item.to_dict()
-            })
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({'success': False, 'message': str(e)}), 500
+       db.session.commit()
+
+       return jsonify({
+           'success': True,
+           'message': '菜單項目已更新',
+           'item': item.to_dict()
+       })
+   except Exception as e:
+       db.session.rollback()
+       return jsonify({'success': False, 'message': str(e)}), 500
 
 
 # 在 app.py 中，找到 @app.route('/api/menu') 後面，新增這個 API：

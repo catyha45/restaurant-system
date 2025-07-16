@@ -474,7 +474,7 @@ def create_order():
         return jsonify({
             'success': True,
             'order_id': order.id,
-            'message': '訂單建立成功'
+            'message': '訂單成功建立'
         })
 
     except Exception as e:

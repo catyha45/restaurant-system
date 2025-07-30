@@ -815,6 +815,7 @@ def init_db():
                 MenuItem(name="麻辣鴨血", description="麻辣鮮香，口感滑嫩", price=30, category="滷味"),
                 MenuItem(name="冬瓜茶", description="古早味冬瓜茶，清香甘甜", price=25, category="飲料"),
                 MenuItem(name="青草茶", description="消暑聖品，甘苦回甘", price=25, category="飲料"),
+                MenuItem(name="可樂", description="清涼解渴", price=25, category="飲料"),
             ]
 
             for item in menu_items:
